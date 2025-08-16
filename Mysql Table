@@ -33,3 +33,16 @@ create table account
 );
 
 
+
+
+
+
+
+insert into bank (bank_name) values
+('SBI'),
+('HDFC'),
+('ICICI');
+
+insert into branch(bank_id,branch_name) values (1,'NAIGAON'),(1,'VASAI'),(1,'VIRAR');
+insert into branch(bank_id,branch_name) values (2,'NAIGAON'),(2,'VASAI'),(2,'VIRAR');
+insert into branch(bank_id,branch_name) values (3,'NAIGAON'),(3,'VASAI'),(3,'VIRAR');
