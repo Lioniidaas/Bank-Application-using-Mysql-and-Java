@@ -1,0 +1,383 @@
+////////////////////////////////MYSQL ////////////////////////////////////////////
+SELECT * FROM masstech.auth;
+
+create table users(
+	userId int(11) not null,
+    holderName varchar(100) not null,
+    contactNo varchar(20) not null,
+    primary key (userId),
+    foreign key(userId) references auth(userId)
+);
+
+create table bank(
+	accountNo bigint not null primary key,
+    ifscCode varchar(100) not null,
+    bankName varchar(100) not null,
+    branchName varchar(100) not null,
+    balance decimal(15,2) not null,
+    userId int(11) not null,
+    foreign key (userId) references auth(userId)
+);
+drop procedure create_new_user;
+delimiter $$
+create procedure create_new_user
+(
+	in p_userName varchar(100),
+    in p_userPasswd varchar(100),
+    in p_userEmail varchar(100),
+    in p_holderName varchar(100),
+    in p_contactNo varchar(100),
+    in p_bankName varchar(100),
+    in p_branchName varchar(100),
+    in p_balance decimal(15,2)
+)
+begin
+	declare p_userId int;
+    declare p_accountNo varchar(100);
+    declare p_ifscCode varchar(100);
+    declare cint int;
+    
+    select count(*) into cint from auth where userName=p_userName OR userEmail = p_userEmail;
+    if(cint > 0) then
+		select 'Username or Email is already exist' as message;
+	else 
+		select 'User Registered Successfully!!' as message;    
+    insert into auth(userName,userEmail,userPasswd)values(p_userName,p_userEmail,p_userPasswd);
+    
+    set p_userId = last_insert_id();
+    
+    insert into users(userId,holderName,contactNo) values(p_userId,p_holderName,p_contactNo);
+    
+    set p_accountNo = concat(p_bankName, floor(10000 + rand() * 99999));
+    
+    set p_ifscCode = concat(left(p_branchName, 3), p_contactNo);
+    
+    insert into bank(accountNo,ifscCode,bankName,branchName,balance,userId) values(p_accountNo,p_ifscCode,
+    p_bankName,p_branchName,p_balance,p_userId);
+    end if;
+end $$
+delimiter ;
+
+delimiter $$
+create procedure userLogin
+(
+	in p_userName varchar(100),
+    in p_userPasswd varchar(100)
+)
+begin 
+  declare cint int;
+  
+  select count(*) into cint from auth where (userName = p_userName and userPasswd = p_userPasswd);
+  
+  if(cint > 0) then
+		select 'login successfully ' as message;
+  else
+		select 'Invalid username or password' as message;
+  end if ;
+end $$
+delimiter ;
+
+delimiter $$
+create procedure deposit_money
+(
+	in p_accountNo varchar(100),
+    in p_balance decimal(15,2)
+)
+begin
+	declare cint int;
+    select count(*) into cint from bank where (accountNo = p_accountNo);
+  
+  if(cint > 0) then
+		select 'Transaction successfull!!' as message;
+		update bank set balance = balance + p_balance where accountNo = p_accountNo;
+  else
+		select 'Wrong Account Number Transaction Failed!!!' as message;
+  end if ;
+end $$
+delimiter ;
+call deposit_money('SBI2866',1000);
+drop procedure deposit_money;
+
+delimiter $$
+create procedure checkBalance
+(
+	in p_accountNo varchar(100)
+)
+begin 
+	select balance from bank where accountNo = p_accountNo;
+end $$
+delimiter ;
+call checkBalance('SBI25866');
+
+
+select * from auth,users,bank;
+SET FOREIGN_KEY_CHECKS = 0;
+
+TRUNCATE TABLE bank;
+TRUNCATE TABLE users;
+TRUNCATE TABLE auth;
+
+SET FOREIGN_KEY_CHECKS = 1;
+
+////////////////////////////////////////////Java code ///////////////////////////////////////////////
+package com.bank;
+
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.util.Scanner;
+
+class InsufficientBalance extends Exception{
+	public InsufficientBalance() {
+		super("Transaction Failed !!! Insufficient Balance");
+	}
+}
+
+public class BankApplication {
+	
+	static Scanner sc;
+	Connection con;
+	ResultSet rs;
+	private String userAccountNo;
+	
+	public BankApplication() throws Exception {
+		Class.forName("com.mysql.cj.jdbc.Driver");
+		
+		con = DriverManager.getConnection("jdbc:mysql://localhost:3306/masstech","root","");
+		sc = new Scanner(System.in);
+	}
+	
+	public void userLogin() {
+		try {
+			String username,password;
+			System.out.println("Enter Username :: ");
+			username = sc.next();
+			System.out.println("Enter Password :: ");
+			password = sc.next();
+			
+			String q = "call userLogin('"+username+"','"+password+"')";
+			PreparedStatement ps = con.prepareStatement(q);
+			rs = ps.executeQuery();
+			if(rs.next()) {
+				System.out.println(rs.getString("message"));
+				
+				String p ="select b.accountNo from bank b join auth a on b.userId = a.userId where a.userName = '"+username+"'";
+				PreparedStatement pst = con.prepareStatement(p);
+				 ResultSet rss = pst.executeQuery();
+				 if(rss.next()) {
+					 userAccountNo = rss.getString("accountNo");
+					 System.out.println("Your Account Number is :: "+userAccountNo);
+				 }
+				 
+				 while(true) {
+						System.out.println("******************** Welcome ********************");
+						System.out.println("1. Deposit Money");
+						System.out.println("2. Withdraw Money");
+						System.out.println("3. Transfer Money");
+						System.out.println("4. Check balance");
+						System.out.println("5. Logout");
+						System.out.print("Enter your choice :: ");
+						System.out.println("*************************************************");
+						
+						int choice2=sc.nextInt();
+						switch(choice2) {
+						case 1 : 
+								deposit();
+								break;
+						case 2 :
+								withdraw();
+								break;
+						case 3 :
+								transfer();
+								break;
+						case 4 :
+								checkBalance();
+								break;
+						case 5 :
+								System.out.println("Logging out!!!");
+								System.exit(0);
+						default :
+								System.out.println("Invalid choice! Please try again");
+						}
+					}
+			}
+			
+			
+		}catch(Exception e) {
+			System.out.println(e.getMessage());
+		}
+	}
+	
+	public void deposit() throws Exception{
+		System.out.println("Enter Amount to deposit :: ");
+		double amount = sc.nextDouble();
+		
+		String q ="call deposit_money('"+userAccountNo+"','"+amount+"')";
+		PreparedStatement ps = con.prepareStatement(q);
+		rs = ps.executeQuery();
+		if(rs.next()) {
+			System.out.println(rs.getString("message"));
+		}else {
+			System.out.println(rs.getString("message"));
+			System.exit(0);
+		}
+	}
+	public void withdraw() throws Exception{
+		
+			System.out.println("Enter amount to withdraw :: ");
+			double amount = sc.nextDouble();
+			
+			String q ="select balance from bank where accountNo = '"+userAccountNo+"'";
+			PreparedStatement ps = con.prepareStatement(q);
+			
+			rs = ps.executeQuery();
+			if(rs.next()) {
+				double p_balance = rs.getDouble("balance");
+				try {
+					if(p_balance < amount) {
+						throw new InsufficientBalance();
+					}
+					
+					String p = "update bank set balance = balance - '"+amount+"' where accountNo ='"+userAccountNo+"'";
+					PreparedStatement pst = con.prepareStatement(p);
+					pst.executeUpdate();
+					
+					PreparedStatement pstm = con.prepareStatement(q);
+					rs = pstm.executeQuery();
+					if(rs.next()) {
+						double currentBalance = rs.getDouble("balance");
+						System.out.println("Transaction Successfull !!");
+						System.out.println("Current Balance is :: "+currentBalance);
+					}
+				}catch(InsufficientBalance e) {
+					System.out.println(e.getMessage());
+				}
+		}	
+	}
+	
+	public void transfer()throws Exception{
+			
+		System.out.println("Enter Recipient Account number :: ");
+		String raccountNo = sc.next();
+		System.out.println("Enter amount to transfer :: ");
+		double amount = sc.nextDouble();
+		
+		try {
+			con.setAutoCommit(false);
+			String q ="select balance from bank where accountNo = '"+userAccountNo+"'";
+			PreparedStatement ps = con.prepareStatement(q);
+			rs = ps.executeQuery();
+			
+			double senderbalance = 0;
+			if(rs.next()) {
+				senderbalance = rs.getDouble("balance");
+			}else {
+				System.out.println("Sender account not found");
+				con.rollback();
+			}
+			if(senderbalance < amount ) {
+				throw new InsufficientBalance();
+			}
+			
+			String dq = "update bank set balance = balance - '"+amount+"' where accountNo = '"+userAccountNo+"'";
+			PreparedStatement pst = con.prepareStatement(dq);
+			pst.executeUpdate();
+			
+			String aq = "update bank set balance = balance + '"+amount+"' where accountNo = '"+raccountNo+"' ";
+			PreparedStatement pstm = con.prepareStatement(aq);
+			int reff = pstm.executeUpdate();
+			if(reff == 0) {
+				System.out.println("Receiver account not found !!");
+				con.rollback();
+				return;
+			}
+			
+			con.commit();
+			System.out.println("Transaction successfull!!");
+		}
+		catch(InsufficientBalance e) {
+			System.out.println(e.getMessage());
+			con.rollback();
+		}catch(Exception e) {
+			System.out.println("Transaction failed "+ e.getMessage());
+			con.rollback();
+		}finally {
+			con.setAutoCommit(true);
+		}
+	}
+	
+	public void checkBalance() throws Exception {
+		
+		String q ="call checkBalance('"+userAccountNo+"')";
+		PreparedStatement ps = con.prepareStatement(q);
+		rs = ps.executeQuery();
+		if(rs.next()) {
+			System.out.println(rs.getString("balance"));
+		}else {
+			System.out.println("Account Not Found");
+		}
+	}
+	
+	
+	public void createAccount() {
+		try {
+			String username,password,email,holdername,contactno,bankname,branchname;
+			double balance = 500;
+			
+			System.out.println("Enter username :: ");
+			username = sc.next();
+			System.out.println("Enter password :: ");
+			password = sc.next();
+			System.out.println("Enter email");
+			email = sc.next();
+			System.out.println("Enter holder name :: ");
+			holdername = sc.next();sc.nextLine();
+			System.out.println("Enter contact no");
+			contactno = sc.next();
+			System.out.println("Enter bankname :: ");
+			bankname = sc.next().toUpperCase();
+			System.out.println("Enter branchname :: ");
+			branchname = sc.next().toUpperCase();
+			
+			String q = "call create_new_user('"+username+"','"+password+"','"+email+"','"+holdername+"','"+contactno+"','"+bankname+"','"+branchname+"','"+balance+"')";
+			PreparedStatement ps = con.prepareStatement(q);
+			rs = ps.executeQuery();
+			if(rs.next()) {
+				System.out.println(rs.getString("message"));
+			}
+			
+			
+			
+		}catch(Exception e) {
+			System.out.println(e.getMessage());
+		}
+	}
+	
+	public static void main(String[] args) throws Exception {
+		BankApplication bank = new BankApplication();
+		System.out.println("******************** Welcome ********************");
+		System.out.println("1. User Login");
+		System.out.println("2. Create new Account");
+		System.out.println("*************************************************");
+		int choice = sc.nextInt();
+		switch(choice) {
+		case 1 :
+				bank.userLogin();
+				break;
+		case 2 :
+				bank.createAccount();
+				break;
+		default :
+				System.out.println("Invalid Choice !!");
+		}
+		
+	}
+	
+
+}
+
+
+
+
+
