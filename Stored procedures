@@ -1,0 +1,142 @@
+delimiter $$
+create procedure create_new_user
+(
+	in uname varchar(100),
+    in pass varchar(100)
+)
+begin
+	declare cint int;
+    select count(*) into cint from auth where username=uname;
+    if cint>0 then
+		signal sqlstate '45000'
+        set message_text = 'Username already exists';
+	else
+		insert into auth(username,password) values(uname,pass);
+	end if;
+end $$
+delimiter ;
+
+delimiter $$
+create procedure create_account(
+ in uid int,
+ in bid int,
+ in brid int,
+ in accno varchar(100),
+ in ifsc varchar(100),
+ in hname varchar(100),
+ in cno varchar(100)
+)
+begin
+	declare cacc int;
+    select count(*) into cacc from account where user_id=uid and bank_id=bid;
+    
+    if cacc=0 then
+		insert into account(user_id,bank_id,branch_id,account_no,ifsc_code,holder_name,contact_no)
+        values(uid,bid,brid,accno,ifsc,hname,cno);
+	else
+		signal sqlstate '45000'
+        set message_text='Account already exist in this bank';
+	end if;
+end $$
+delimiter ;
+
+delimiter $$
+create procedure deposit_amount(
+	in accno varchar(100),
+    in amt decimal(15,2)
+)
+begin
+	update account set balance = balance + amt where account_no = accno;
+end $$
+delimiter ;
+
+call deposit_amount('SBI48617',1000);
+select * from account where account_no = 'SBI48617';
+update account set balance = balance + (1000) where account_no = 'SBI48617'; 
+alter table account modify balance decimal(15,2) not null default 1000;
+delimiter $$
+create procedure withdraw_amount
+(
+	in accno varchar(100),
+    in amt decimal(15,2)
+)
+begin
+	declare curr_balance decimal(15,2);
+    select balance into curr_balance from account where account_no=accno;
+    
+    if curr_balance >= amt then
+		update account set balance = balance-amt where account_no=accno;
+	else
+		signal sqlstate '45000'
+        set message_text = 'Insufficient Funds';
+	end if;
+end $$
+delimiter ;
+
+
+delimiter $$
+create procedure transfer_amount(
+	in src_accno varchar(100),
+    in dest_accno varchar(100),
+    in amt decimal(15,2)
+)
+begin
+	declare src_balance decimal(15,2);
+    declare src_exist int;
+    declare dest_exist int;
+    
+    select count(*) into src_exist from account where account_no=src_accno;
+    if src_exist =0 then
+		signal sqlstate '45000' set message_text='Source account does not exist';
+	end if;
+    
+    select count(*) into dest_exist from account where account_no=dest_accno;
+    if dest_exist =0 then
+		signal sqlstate '45000' set message_text='Destination account does not exist';
+	end if;
+    
+    
+    select balance into src_balance from account where account_no=src_accno;
+    if src_balance >= amt then
+		update account set balance = balance-amt where account_no=src_accno;
+        update account set balance = balance+amt where account_no=dest_accno;
+	else	
+		signal sqlstate '45000' set message_text='Insufficient Funds';
+	end if;
+end $$
+delimiter ;
+
+delimiter $$
+create procedure check_balance(
+	in accno varchar(100)
+)
+begin
+	select balance from account where account_no = accno;
+end $$
+delimiter ;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
